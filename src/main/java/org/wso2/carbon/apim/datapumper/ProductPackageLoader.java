@@ -1,0 +1,195 @@
+package org.wso2.carbon.apim.datapumper;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.jar.Manifest;
+import java.util.regex.Pattern;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.apim.datapumper.entity.JARFile;
+
+
+public class ProductPackageLoader {
+    private static final Log log = LogFactory.getLog(ProductPackageLoader.class);
+    private static String findUsesRegex = "(\\;*uses:=\"((([a-zA-Z0-9_*]*)\\.*\\,*)*)\")";
+    private static Pattern patternForUses = Pattern.compile(findUsesRegex);
+    
+    private static String findVersionRegex = "(\\;*version=\"((([a-zA-Z0-9_*-*]*)\\.*)*)\")";
+    private static Pattern patternForVersion = Pattern.compile(findVersionRegex);
+
+    public static void main(String[] args) throws Throwable {
+
+	PropertyLoader.init();
+	
+	Map<String,String> exportPkgs = new HashMap<String,String>();
+	Map<String,String> exportPkgsWithoutVersion = new HashMap<String,String>();
+	
+	Map<String,String> duplicates = new HashMap<String,String>();
+	Map<String,String> duplicatesWithVersion = new HashMap<String,String>();
+
+	Map<String, JARFile> artifacts = getPluginArtifacts(Constants.PRODUCT_DIR);
+	Set<Entry<String, JARFile>> entries = artifacts.entrySet();
+	StringBuilder allPlugins = new StringBuilder();
+	int count = 0;
+	for (Entry<String, JARFile> entry : entries) {
+	    JARFile jar = entry.getValue();
+	    log.info("JAR file : "+jar.toString() + " count : "+ ++count);
+	    String fileName = entry.getKey();
+	    String exports = jar.getExportPkgs();
+	    String[] pkgs = exports.split(",");
+	    for(String pkg : pkgs){
+		pkg = pkg.trim();
+		allPlugins.append(pkg).append("\n");
+		String withoutVersion = patternForVersion.matcher(pkg).replaceAll("");
+		String key = fileName+":"+pkg;
+		String keyWithoutVersion = fileName+":"+withoutVersion;
+		
+		if(exportPkgs.containsKey(pkg)){
+		    duplicates.put(key, pkg);
+		    String  duplicateFile = exportPkgs.get(pkg);
+		    String dupKey = duplicateFile+":"+pkg;
+		    duplicates.put(dupKey, pkg);
+		}else{
+		    exportPkgs.put(pkg, fileName);
+		    
+		}
+		
+		if(exportPkgsWithoutVersion.containsKey(withoutVersion)){
+		    duplicatesWithVersion.put(keyWithoutVersion, withoutVersion);
+		    String  duplicateFile = exportPkgsWithoutVersion.get(withoutVersion);
+		    String dupKey = duplicateFile+":"+withoutVersion;
+		    duplicatesWithVersion.put(dupKey, withoutVersion);
+		}else{
+		    exportPkgsWithoutVersion.put(withoutVersion, fileName);
+		}
+	    }
+	}
+	
+	log.info("Duplicates with version : "+duplicates.size());
+	log.info("Duplicates without version : "+duplicatesWithVersion.size());
+	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/DupWithVersion.txt", duplicates.toString());
+	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/DupWithoutVersion.txt", duplicatesWithVersion.toString());
+	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/exports.txt", allPlugins.toString());
+
+    }
+
+    private static Map<String, JARFile> getPluginArtifacts(final String directoryType) throws Throwable {
+	String basePath = PropertyLoader.getPropertyValue(directoryType);
+	Map<String, JARFile> artifacts = new HashMap<String, JARFile>();
+	findPlugins(basePath + "/repository/components/plugins", artifacts);
+	return artifacts;
+    }
+
+    public static void findPlugins(String basePath, Map<String, JARFile> artifacts) throws Throwable {
+	log.debug("Scanning path: " + basePath);
+	String productDIR = PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR);
+
+	File file = null;
+	File folder = new File(basePath);
+	System.out.println(productDIR);
+	StringBuilder allPluginInfo = new StringBuilder();
+
+	// Get the list of files in particular directory
+	File[] listFiles = folder.listFiles();
+	if (listFiles == null || listFiles.length == 0) {
+	    return;
+	}
+	ArrayList<File> listOfFiles = new ArrayList<File>(Arrays.asList(listFiles));
+	if (listOfFiles.size() == 0) {
+	    log.info("No files found for the scan: " + folder.getName());
+	    return;
+	}
+
+	// Check the next level in the directory for files and directory
+	for (int i = 0; i < listOfFiles.size(); i++) {
+	    file = listOfFiles.get(i);
+
+	    if (artifacts.containsKey(file.getName())) {
+		continue;
+	    }
+
+	    // If the file is a file not a folder and if files has the
+	    // expected pattern
+	    if (file.isFile()) {
+		String content = null;
+		try {
+		    log.info("++++++++++++++++++++++++++++++++++++++++++++ " + file.getName());
+		    
+		    
+		    content = FileHandler.readZipFile(basePath + "/" + file.getName(), "META-INF/MANIFEST.MF");
+		    
+		    Manifest manifest = new Manifest(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)));
+		    String exportPkgs = manifest.getMainAttributes().getValue("Export-Package");
+		    
+		    if (exportPkgs != null) {
+			StringBuilder wholeString = new StringBuilder();
+			String onlyPkgs = patternForUses.matcher(exportPkgs).replaceAll("");
+			wholeString.append(onlyPkgs);
+			/*String[] arrayOfString = exportPkgs.split(";");
+			
+			if (arrayOfString.length > 1) {
+			    for (String each : arrayOfString) {
+				log.info("######################################### " + each);
+				 String onlyPkgs = pattern.matcher(each).replaceAll("");
+				 wholeString.append(onlyPkgs).append(";");
+				
+			    }
+			   
+			}else{
+			    String onlyPkgs = pattern.matcher(exportPkgs).replaceAll("");
+			    wholeString.append(onlyPkgs);
+			}*/
+
+			allPluginInfo.append(wholeString.toString());
+			artifacts.put(file.getName(), getComponent(file,wholeString.toString()));
+			log.info("--------------------------------  " + wholeString.toString());
+
+		    }
+		    
+		    
+		    
+		} catch (Throwable ex) {
+		    String msg = "**********************-Error-************************  " + file.getName() + "\n" + content; 
+		    System.out.println(msg);
+		    log.error(msg + "\n" +ex);
+		    throw ex;
+		}
+
+	    } else {
+		 log.info("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% " + file.getName());
+		findPlugins(file.getName(), artifacts);
+	    }
+
+	}
+
+	log.info( allPluginInfo.toString());
+    }
+
+    private static JARFile getComponent(final File file, final String expPkg) throws Exception {
+
+	String fileName = file.getName();
+	int indexOfUnderscore = fileName.indexOf("_");
+	int indexOfJar = fileName.lastIndexOf(".jar");
+	String componentName = null;
+	String version = null;
+	try {
+	    componentName = fileName.substring(0, indexOfUnderscore);
+	    version = fileName.substring(indexOfUnderscore + 1, indexOfJar);
+	} catch (Exception ex) {
+	    System.out.println(" indexOfUnderscore : " + indexOfUnderscore
+		    + " --------------------------  indexOfJar : " + indexOfJar);
+	    throw ex;
+	}
+
+	return new JARFile(file, componentName, version,expPkg);
+
+    }
+}
