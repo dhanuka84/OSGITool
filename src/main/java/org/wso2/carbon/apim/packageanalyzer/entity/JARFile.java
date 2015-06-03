@@ -1,4 +1,4 @@
-package org.wso2.carbon.apim.datapumper.entity;
+package org.wso2.carbon.apim.packageanalyzer.entity;
 
 import java.io.File;
 

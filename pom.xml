@@ -2,7 +2,7 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.wso2.carbon</groupId>
-	<artifactId>org.wso2.carbon.apim.datapumper</artifactId>
+	<artifactId>org.wso2.carbon.apim.packageanalyzer</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 
 	<dependencies>
@@ -63,8 +63,8 @@
 
 						<manifest>
 							<addClasspath>true</addClasspath>
-							<mainClass>org.wso2.carbon.apim.datapumper.ProductPackageLoader</mainClass>
-							<packageName>org.wso2.carbon.apim.datapumper</packageName>
+							<mainClass>org.wso2.carbon.apim.packageanalyzer.ProductPackageLoader</mainClass>
+							<packageName>org.wso2.carbon.apim.packageanalyzer</packageName>
 						</manifest>
 					</archive>
 				</configuration>
@@ -75,7 +75,7 @@
 				<configuration>
 					<archive>
 						<manifest>
-							<mainClass>org.wso2.carbon.apim.datapumper.ProductPackageLoader</mainClass>
+							<mainClass>org.wso2.carbon.apim.packageanalyzer.ProductPackageLoader</mainClass>
 						</manifest>
 					</archive>
 					<descriptorRefs>

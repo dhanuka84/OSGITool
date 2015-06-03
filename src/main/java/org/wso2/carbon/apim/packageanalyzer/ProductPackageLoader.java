@@ -1,11 +1,14 @@
-package org.wso2.carbon.apim.datapumper;
+package org.wso2.carbon.apim.packageanalyzer;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -14,7 +17,7 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.wso2.carbon.apim.datapumper.entity.JARFile;
+import org.wso2.carbon.apim.packageanalyzer.entity.JARFile;
 
 
 public class ProductPackageLoader {
@@ -35,9 +38,11 @@ public class ProductPackageLoader {
 	Map<String,String> duplicates = new HashMap<String,String>();
 	Map<String,String> duplicatesWithVersion = new HashMap<String,String>();
 
-	Map<String, JARFile> artifacts = getPluginArtifacts(Constants.PRODUCT_DIR);
+	Map<String, JARFile> artifacts = getPluginArtifacts(Constants.COMPONENTS_DIR);
 	Set<Entry<String, JARFile>> entries = artifacts.entrySet();
-	StringBuilder allPlugins = new StringBuilder();
+	StringBuilder allPkgs = new StringBuilder();
+	StringBuilder allJars = new StringBuilder();
+	List<String> allDupWithoutVersionPkgOnly =  new ArrayList<String>();
 	int count = 0;
 	for (Entry<String, JARFile> entry : entries) {
 	    JARFile jar = entry.getValue();
@@ -45,9 +50,10 @@ public class ProductPackageLoader {
 	    String fileName = entry.getKey();
 	    String exports = jar.getExportPkgs();
 	    String[] pkgs = exports.split(",");
+	    allJars.append("rm ").append(fileName).append("\n");
 	    for(String pkg : pkgs){
 		pkg = pkg.trim();
-		allPlugins.append(pkg).append("\n");
+		allPkgs.append(pkg).append("\n");
 		String withoutVersion = patternForVersion.matcher(pkg).replaceAll("");
 		String key = fileName+":"+pkg;
 		String keyWithoutVersion = fileName+":"+withoutVersion;
@@ -67,34 +73,48 @@ public class ProductPackageLoader {
 		    String  duplicateFile = exportPkgsWithoutVersion.get(withoutVersion);
 		    String dupKey = duplicateFile+":"+withoutVersion;
 		    duplicatesWithVersion.put(dupKey, withoutVersion);
+		    allDupWithoutVersionPkgOnly.add(withoutVersion);
 		}else{
 		    exportPkgsWithoutVersion.put(withoutVersion, fileName);
 		}
 	    }
 	}
 	
+	Collections.sort(allDupWithoutVersionPkgOnly, new Comparator<String>() {
+
+	    public int compare(String o1, String o2) {
+		return o1.compareToIgnoreCase(o2);
+	    }
+	    
+	});
+	
+	StringBuilder allDupPkgWV = new StringBuilder();
+	for(String pkg : allDupWithoutVersionPkgOnly){
+	    allDupPkgWV.append(pkg).append("\n");
+	}
+	
 	log.info("Duplicates with version : "+duplicates.size());
 	log.info("Duplicates without version : "+duplicatesWithVersion.size());
 	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/DupWithVersion.txt", duplicates.toString());
 	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/DupWithoutVersion.txt", duplicatesWithVersion.toString());
-	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/exports.txt", allPlugins.toString());
+	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/exports.txt", allPkgs.toString());
+	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/allplugins.sh", allJars.toString());
+	FileHandler.writingToFile(PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR)+"/allDupsPkgsWV.txt", allDupPkgWV.toString());
 
     }
 
     private static Map<String, JARFile> getPluginArtifacts(final String directoryType) throws Throwable {
 	String basePath = PropertyLoader.getPropertyValue(directoryType);
 	Map<String, JARFile> artifacts = new HashMap<String, JARFile>();
-	findPlugins(basePath + "/repository/components/plugins", artifacts);
+	findPlugins(basePath, artifacts);
 	return artifacts;
     }
 
     public static void findPlugins(String basePath, Map<String, JARFile> artifacts) throws Throwable {
 	log.debug("Scanning path: " + basePath);
-	String productDIR = PropertyLoader.getPropertyValue(Constants.PRODUCT_DIR);
 
 	File file = null;
 	File folder = new File(basePath);
-	System.out.println(productDIR);
 	StringBuilder allPluginInfo = new StringBuilder();
 
 	// Get the list of files in particular directory

@@ -1,4 +1,4 @@
-package org.wso2.carbon.apim.datapumper;
+package org.wso2.carbon.apim.packageanalyzer;
 
 public class Constants {
 
